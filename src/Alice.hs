@@ -28,3 +28,5 @@ main = withSocketsDo $ do
 		talk sock = do
 			s <- diffieHellman sock
 			P.putStrLn $ show s
+			myIdentifier <- receiveIdentifier sock
+			P.putStrLn [myIdentifier]
