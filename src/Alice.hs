@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
--- Echo client program
+
 module Main (main) where
 
-import qualified Control.Exception as E
+import Control.Exception (bracket)
 import Data.ByteString.Char8
 import Network.Socket hiding (recv)
 import Network.Socket.ByteString (recv, sendAll)
@@ -15,18 +15,18 @@ import ModularArithmetic
 main :: IO ()
 main = withSocketsDo $ do
 	addr <- resolve "127.0.0.1" "3000"
-	E.bracket (open addr) close talk
+	bracket (open addr) close talk
 	where
 		resolve host port = do
-			let hints = defaultHints { addrSocketType = Stream }
-			addr:_ <- getAddrInfo (Just hints) (Just host) (Just port)
-			return addr
+			let hints = defaultHints {addrSocketType = Stream}
+			fmap head $ getAddrInfo (Just hints) (Just host) (Just port)
 		open addr = do
 			sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
 			connect sock $ addrAddress addr
 			return sock
 		talk sock = do
 			s <- diffieHellman sock
-			P.putStrLn $ show s
 			myIdentifier <- receiveIdentifier sock
-			P.putStrLn [myIdentifier]
+			sendIdentifier sock myIdentifier
+			msg <- recv sock 1024
+			putStrLn $ decrypt s msg

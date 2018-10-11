@@ -11,6 +11,7 @@ import qualified Prelude as P (putStrLn)
 
 import DiffieHellman
 import ModularArithmetic
+import Polynomial
 
 main :: IO ()
 main = withSocketsDo $ do
@@ -26,5 +27,12 @@ main = withSocketsDo $ do
 			connect sock $ addrAddress addr
 			return sock
 		talk sock = do
-			s <- diffieHellman sock
-			P.putStrLn $ show s
+			--diffieHellman' sock >>= print
+			let a = 18
+			let capA = (g' ^ a) `polynomialMod` p'
+			print capA
+			sendNumber sock 69
+			sendPolynomial sock capA
+			--capB <- receivePolynomial sock
+			--print capB
+			--print $ (capB^a) `polynomialMod` p'

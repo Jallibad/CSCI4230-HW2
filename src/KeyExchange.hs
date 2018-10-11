@@ -18,11 +18,13 @@ import Data.Map.Strict (Map)
 import Data.List ((\\))
 import Data.Maybe (listToMaybe)
 
-import Polynomial
 import DiffieHellman
-import ModularArithmetic
+import Polynomial
 
 type ClientList = MVar (Map Client (Socket, Integer))
+
+lookupKey :: ClientList -> Client -> IO Integer
+lookupKey clientList client = withMVar clientList $ return . snd . (Map.! client)
 
 newClientList :: IO ClientList
 newClientList = newMVar Map.empty
@@ -40,7 +42,11 @@ acceptClient sock clientList = do
 	sendIdentifier sock client
 	return client
 
---removeClient :: ClientList -> Client -> IO ()
+receiveClientFrom :: ClientList -> Socket -> IO (Client, Integer)
+clientList `receiveClientFrom` sock = do
+	client <- receiveIdentifier sock
+	key <- lookupKey clientList client
+	return (client, key)
 
 main :: IO ()
 main = withSocketsDo $ do
@@ -64,8 +70,13 @@ main = withSocketsDo $ do
 			(conn, peer) <- accept sock
 			putStrLn $ append "Connection from " (pack $ show peer)
 			forkFinally (talk conn clientList) (const $ close conn)
-			readMVar clientList >>= print
 		talk conn clientList = do
 			client <- acceptClient conn clientList
-			sendIdentifier conn client
-			--msg <-
+			(idA, kAS) <- clientList `receiveClientFrom` conn
+			(idB, kBS) <- clientList `receiveClientFrom` conn
+			nonceA <- receiveNumber conn
+			kAB <- return 4 -- Highly random number generated through super secret process
+			let msgToBob = encrypt kBS $ pack $ (show kAB) ++ "|" ++ (show idA)
+			--let msg = (show nonceA) ++ "|" ++ (show kAB) ++ (show idB)
+			sendAll conn $ encrypt kAS "Hello World"
+			return 0
