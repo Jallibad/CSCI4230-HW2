@@ -3,7 +3,7 @@
 module Main (main) where
 
 import Control.Exception (bracket)
-import Data.ByteString.Char8
+import Data.ByteString.Char8 hiding (head)
 import Network.Socket hiding (recv)
 import Network.Socket.ByteString (recv, sendAll)
 import Prelude hiding (putStrLn)
@@ -27,6 +27,7 @@ main = withSocketsDo $ do
 		talk sock = do
 			s <- diffieHellman sock
 			myIdentifier <- receiveIdentifier sock
-			sendIdentifier sock myIdentifier
+			sendIdentifier sock myIdentifier -- A
+			sendNumber sock 5 -- nonceA
 			msg <- recv sock 1024
 			putStrLn $ decrypt s msg

@@ -1,4 +1,5 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings		#-}
+{-# LANGUAGE ViewPatterns			#-}
 
 module KeyExchange (main) where
 
@@ -9,21 +10,21 @@ import Control.Exception as E
 import Control.Monad (unless, forever, void)
 import qualified Data.ByteString as S
 import Data.ByteString.Char8 (putStrLn, pack, unpack)
-import Data.ByteString (append, null)
-import Network.Socket hiding (recv)
-import Network.Socket.ByteString (recv, sendAll)
+import Data.ByteString (ByteString, append, null)
+import Network.Socket hiding (recv, send)
 import Control.Concurrent.MVar
 import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
 import Data.List ((\\))
 import Data.Maybe (listToMaybe)
+import Data.Serialize
 
 import DiffieHellman
 import Polynomial
 
-type ClientList = MVar (Map Client (Socket, Integer))
+type ClientList = MVar (Map Client (Socket, GF2))
 
-lookupKey :: ClientList -> Client -> IO Integer
+lookupKey :: ClientList -> Client -> IO GF2
 lookupKey clientList client = withMVar clientList $ return . snd . (Map.! client)
 
 newClientList :: IO ClientList
@@ -34,19 +35,34 @@ nextClientIdentifier clientList = do
 	clients <- readMVar clientList
 	return $ head $ ['A'..'Z'] \\ Map.keys clients
 
-acceptClient :: Socket -> ClientList -> IO Client
+acceptClient :: Socket -> ClientList -> IO ()
 acceptClient sock clientList = do
-	s <- diffieHellman sock
+	s <- diffieHellman' sock
 	client <- nextClientIdentifier clientList
 	modifyMVar_ clientList $ return . Map.insert client (sock, s)
-	sendIdentifier sock client
-	return client
+	send sock client
 
-receiveClientFrom :: ClientList -> Socket -> IO (Client, Integer)
+receiveClientFrom :: ClientList -> Socket -> IO (Client, GF2)
 clientList `receiveClientFrom` sock = do
-	client <- receiveIdentifier sock
+	client <- receive sock
 	key <- lookupKey clientList client
 	return (client, key)
+
+talk :: Socket -> ClientList -> IO ()
+talk sock clientList = do
+		op <- receive sock
+		case op of
+			CreateServerConnection -> acceptClient sock clientList
+			GetSharedKey -> do
+				(idA, idB, nonceA, bobMessage) <- receive sock :: IO (Client, Client, Nonce, ByteString)
+				kAS <- lookupKey clientList idA
+				kBS <- lookupKey clientList idB
+				let kAB = x^5+x^2+1 :: GF2
+				let ((==idA) -> True, nonceB) = decodeEncrypted kBS bobMessage
+				let newBobMessage = encrypt kBS $ encode (kAB, idA, nonceB)
+				sendEncrypted sock kAS (nonceA, kAB, idB, newBobMessage)
+				return ()
+		return ()
 
 main :: IO ()
 main = withSocketsDo $ do
@@ -70,13 +86,3 @@ main = withSocketsDo $ do
 			(conn, peer) <- accept sock
 			putStrLn $ append "Connection from " (pack $ show peer)
 			forkFinally (talk conn clientList) (const $ close conn)
-		talk conn clientList = do
-			client <- acceptClient conn clientList
-			(idA, kAS) <- clientList `receiveClientFrom` conn
-			(idB, kBS) <- clientList `receiveClientFrom` conn
-			nonceA <- receiveNumber conn
-			kAB <- return 4 -- Highly random number generated through super secret process
-			let msgToBob = encrypt kBS $ pack $ (show kAB) ++ "|" ++ (show idA)
-			--let msg = (show nonceA) ++ "|" ++ (show kAB) ++ (show idB)
-			sendAll conn $ encrypt kAS "Hello World"
-			return 0

@@ -27,12 +27,14 @@ main = withSocketsDo $ do
 			connect sock $ addrAddress addr
 			return sock
 		talk sock = do
-			--diffieHellman' sock >>= print
-			let a = 18
-			let capA = (g' ^ a) `polynomialMod` p'
-			print capA
-			sendNumber sock 69
-			sendPolynomial sock capA
+			s <- diffieHellman' sock
+			msg <- receive sock :: IO ByteString
+			print $ decrypt s msg
+			--let a = 18
+			--let capA = (g' ^ a) `polynomialMod` p'
+			--print capA
+			--sendAll sock 69
+			--sendPolynomial sock capA
 			--capB <- receivePolynomial sock
 			--print capB
 			--print $ (capB^a) `polynomialMod` p'
